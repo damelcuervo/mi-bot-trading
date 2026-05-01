@@ -1,5 +1,21 @@
 import pandas as pd
 import numpy as np
+import csv
+import os
+from datetime import datetime
+
+def registrar_operacion(tipo, precio, señal, rsi, adx, stoch, resultado_dinero, saldo_total):
+    archivo = 'historial_operaciones.csv'
+    # Si el archivo no existe, lo creamos con encabezados
+    file_exists = os.path.isfile(archivo)
+    
+    with open(archivo, mode='a', newline='') as f:
+        writer = csv.writer(f)
+        if not file_exists:
+            writer.writerow(['Fecha', 'Tipo', 'Precio', 'Señal', 'RSI', 'ADX', 'STOCH', 'Ganancia/Perdida', 'Saldo Total'])
+        
+        fecha_actual = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        writer.writerow([fecha_actual, tipo, precio, señal, rsi, adx, stoch, resultado_dinero, saldo_total])
 
 def calcular_indicadores(velas):
     columnas = ['Fecha', 'Apertura', 'Máximo', 'Mínimo', 'Cierre', 'Volumen']
@@ -21,6 +37,7 @@ def calcular_indicadores(velas):
     alto_max = df['Máximo'].rolling(window=14).max()
     df['STOCH_K'] = 100 * ((df['Cierre'] - bajo_min) / (alto_max - bajo_min))
     df['STOCH_D'] = df['STOCH_K'].rolling(window=3).mean()
+    
     
     # --- DMI / ADX ---
     n = 14

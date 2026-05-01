@@ -78,28 +78,62 @@ def ejecutar_paper_trading():
 
             # 5. Lógica de SALIDA
             elif señal == "VENTA" and en_posicion:
-                # Aquí cerramos cualquier posición abierta
+                # 1. Cálculo de resultados antes de cerrar
                 if tipo_posicion == "LONG":
-                    usd_disponible = (btc_poseido * precio_actual) * (1 - config.COMISION_EXCHANGE)
-                else: # Si era SHORT, ganamos si el precio bajó
-                    beneficio = (precio_compra - precio_actual) * btc_poseido
-                    usd_disponible = (precio_compra * btc_poseido) + beneficio
+                    # Ganamos si el precio subió
+                    usd_final = (btc_poseido * precio_actual) * (1 - config.COMISION_EXCHANGE)
+                    ganancia_operacion = usd_final - (precio_compra * btc_poseido)
+                else: 
+                    # SHORT: Ganamos si el precio bajó (Precio_Entrada - Precio_Actual)
+                    beneficio_puntos = (precio_compra - precio_actual) * btc_poseido
+                    # Restamos una comisión estimada por la operación de short
+                    ganancia_operacion = beneficio_puntos - (precio_compra * btc_poseido * config.COMISION_EXCHANGE)
+                    usd_final = (precio_compra * btc_poseido) + ganancia_operacion
+
+                # 2. Actualizamos el saldo real disponible
+                usd_disponible = usd_final
                 
+                # 3. REGISTRO EN EL ARCHIVO CSV (Caja Negra)
+                # Esto crea un archivo llamado 'historial_operaciones.csv' en tu escritorio
+                analisis.registrar_operacion(
+                    tipo_posicion, 
+                    precio_actual, 
+                    señal, 
+                    rsi_act, 
+                    adx, 
+                    stoch_k, 
+                    ganancia_operacion, 
+                    usd_disponible
+                )
+
+                print(f"💰 POSICIÓN {tipo_posicion} CERRADA a ${precio_actual:.2f}")
+                print(f"💵 Resultado de esta op: ${ganancia_operacion:.2f}")
+
+                # 4. Resetear variables de posición
                 btc_poseido = 0
                 en_posicion = False
-                print(f"💰 POSICIÓN CERRADA a ${precio_actual}. Volvemos a USD.")
+                tipo_posicion = None
 
-            # 5. Estado de la Cartera
-            valor_cartera = usd_disponible + (btc_poseido * precio_actual)
+            # 5. Estado de la Cartera (Visualización en consola)
+            if en_posicion:
+                if tipo_posicion == "LONG":
+                    valor_cartera = btc_poseido * precio_actual
+                else: # SHORT: valor inicial + (entrada - actual)
+                    valor_cartera = (precio_compra * btc_poseido) + ((precio_compra - precio_actual) * btc_poseido)
+            else:
+                valor_cartera = usd_disponible
+
             ganancia_total = valor_cartera - config.SALDO_INICIAL_USD
+            
             print(f"CARTERA: ${valor_cartera:.2f} | GANANCIA TOTAL: ${ganancia_total:.2f}")
             print("-" * 50)
 
-            time.sleep(30) # Esperamos 30 segundos para la próxima revisión
+            # Esperamos 30 segundos (o lo que configures) para la próxima vela/revisión
+            time.sleep(30) 
             
         except Exception as e:
-            print(f"Error en el bucle: {e}")
-            time.sleep(10)
+            print(f"⚠️ Error en el bucle: {e}")
+            time.sleep(10) # Espera un poco antes de reintentar por si fue error de internet
 
 if __name__ == "__main__":
     ejecutar_paper_trading()

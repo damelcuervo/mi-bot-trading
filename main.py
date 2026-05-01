@@ -58,19 +58,36 @@ def ejecutar_paper_trading():
                     en_posicion = False
                     print(f"🎯 TAKE PROFIT ALCANZADO: Ganancia del {variacion*100:.2f}%")
 
-            # 4. Lógica de ENTRADA Y SALIDA por Estrategia
+            # 4. Lógica de ENTRADA (LONG o SHORT)
             if señal == "COMPRA" and not en_posicion:
+                tipo_posicion = "LONG"
                 precio_compra = precio_actual
                 btc_poseido = (usd_disponible / precio_actual) * (1 - config.COMISION_EXCHANGE)
                 usd_disponible = 0
                 en_posicion = True
-                print(f"🚀 COMPRA: Entramos a ${precio_actual}")
+                print(f"🚀 POSICIÓN LONG: Entramos comprando a ${precio_actual}")
 
+            elif señal == "SHORT" and not en_posicion:
+                tipo_posicion = "SHORT"
+                precio_compra = precio_actual
+                # En un Short simulado, "poseemos" el valor en USD que bajará
+                btc_poseido = (usd_disponible / precio_actual) 
+                usd_disponible = 0
+                en_posicion = True
+                print(f"📉 POSICIÓN SHORT: Entramos vendiendo a ${precio_actual}")
+
+            # 5. Lógica de SALIDA
             elif señal == "VENTA" and en_posicion:
-                usd_disponible = (btc_poseido * precio_actual) * (1 - config.COMISION_EXCHANGE)
+                # Aquí cerramos cualquier posición abierta
+                if tipo_posicion == "LONG":
+                    usd_disponible = (btc_poseido * precio_actual) * (1 - config.COMISION_EXCHANGE)
+                else: # Si era SHORT, ganamos si el precio bajó
+                    beneficio = (precio_compra - precio_actual) * btc_poseido
+                    usd_disponible = (precio_compra * btc_poseido) + beneficio
+                
                 btc_poseido = 0
                 en_posicion = False
-                print(f"💰 VENTA POR ESTRATEGIA: El cruce indica salida a ${precio_actual}")
+                print(f"💰 POSICIÓN CERRADA a ${precio_actual}. Volvemos a USD.")
 
             # 5. Estado de la Cartera
             valor_cartera = usd_disponible + (btc_poseido * precio_actual)

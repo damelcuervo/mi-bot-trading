@@ -39,32 +39,60 @@ def calcular_indicadores(velas):
     
     return df
 
+import pandas as pd
+
 def obtener_señal(df):
-    if len(df) < 30: return "ESPERAR"
+    # Paso 1: Verificamos que tengamos suficientes datos para los indicadores
+    # El ADX y la SMA lenta necesitan al menos 21-25 velas
+    if len(df) < 30: 
+        return "ESPERAR"
+    
     ultimo = df.iloc[-1]
     
-    # Variables
-    ema, sma = ultimo['EMA_RAPIDA'], ultimo['SMA_LENTA']
-    plus_di, minus_di, adx = ultimo['plus_di'], ultimo['minus_di'], ultimo['ADX']
+    # --- Extracción de Indicadores ---
+    ema = ultimo['EMA_RAPIDA']
+    sma = ultimo['SMA_LENTA']
+    plus_di = ultimo['plus_di']
+    minus_di = ultimo['minus_di']
+    adx = ultimo['ADX']
     rsi = ultimo['RSI']
-    stoch_k, stoch_d = ultimo['STOCH_K'], ultimo['STOCH_D']
-    
-    if pd.isna(adx) or pd.isna(rsi): return "ESPERAR"
+    stoch_k = ultimo['STOCH_K']
+    stoch_d = ultimo['STOCH_D']
 
-    # --- NUEVA LÓGICA DE SUPER CONFIRMACIÓN ---
-    # COMPRA si:
-    # 1. Tendencia: EMA > SMA
-    # 2. Fuerza: +DI > -DI y ADX > 20
-    # 3. Impulso: RSI < 70 (no está sobrecomprado)
-    # 4. Gatillo: Estocástico K cruza sobre D
-    compra = (ema > sma) and (plus_di > minus_di) and (adx > 20) and (rsi < 70) and (stoch_k > stoch_d)
+    # Paso 2: Verificamos que no haya valores nulos (NaN)
+    if pd.isna(adx) or pd.isna(rsi) or pd.isna(stoch_k):
+        return "ESPERAR"
 
-    # VENTA si:
-    # 1. EMA cruza abajo de SMA
-    # 2. O si el RSI > 80 (extrema sobrecompra, mejor asegurar)
-    # 3. O si -DI > +DI
-    venta = (ema < sma) or (rsi > 80) or (minus_di > plus_di)
+    # --- LÓGICA PARA COMPRA (LONG / ALCISTA) ---
+    # 1. Tendencia: EMA por encima de SMA
+    # 2. Fuerza: +DI por encima de -DI y ADX fuerte (> 20)
+    # 3. Filtro RSI: Que no esté ya muy caro (< 65)
+    # 4. Gatillo Estocástico: Cruce alcista (K > D)
+    condicion_long = (
+        (ema > sma) and 
+        (plus_di > minus_di) and 
+        (adx > 20) and 
+        (rsi < 65) and 
+        (stoch_k > stoch_d)
+    )
 
-    if compra: return "COMPRA"
-    if venta: return "VENTA"
-    return "ESPERAR"
+    # --- LÓGICA PARA VENTA (SHORT / BAJISTA) ---
+    # 1. Tendencia: EMA por debajo de SMA
+    # 2. Fuerza: -DI por encima de +DI y ADX fuerte (> 20)
+    # 3. Filtro RSI: Que no esté ya muy barato (> 35) para evitar vender en el piso
+    # 4. Gatillo Estocástico: Cruce bajista (K < D)
+    condicion_short = (
+        (ema < sma) and 
+        (minus_di > plus_di) and 
+        (adx > 20) and 
+        (rsi > 35) and 
+        (stoch_k < stoch_d)
+    )
+
+    # --- RETORNO DE SEÑAL ---
+    if condicion_long:
+        return "COMPRA"
+    elif condicion_short:
+        return "SHORT"
+    else:
+        return "ESPERAR"

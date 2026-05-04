@@ -2,6 +2,8 @@ import pandas as pd
 import ccxt
 import analisis as al
 import config
+import os
+import csv
 from datetime import datetime
 
 def obtener_datos_historicos(simbolo, temporalidad, limite):
@@ -12,56 +14,81 @@ def obtener_datos_historicos(simbolo, temporalidad, limite):
     df['Fecha'] = pd.to_datetime(df['Fecha'], unit='ms')
     return df
 
+def registrar_operacion_csv(tipo, precio, rsi, adx, resultado, saldo):
+    """Guarda el detalle de cada trade en un archivo CSV."""
+    nombre_archivo = 'historial_backtest.csv'
+    existe = os.path.isfile(nombre_archivo)
+    with open(nombre_archivo, mode='a', newline='') as f:
+        writer = csv.writer(f)
+        if not existe:
+            writer.writerow(['Fecha', 'Tipo', 'Precio', 'RSI', 'ADX', 'Ganancia', 'Saldo'])
+        writer.writerow([datetime.now().strftime('%Y-%m-%d %H:%M:%S'), tipo, precio, rsi, adx, resultado, saldo])
+
 def correr_backtest():
-    # 1. Preparación
-    df = obtener_datos_historicos(config.SIMBOLO, config.TEMPORALIDAD, 1000)
-    df = al.calcular_indicadores(df.values.tolist()) # Reusamos tu lógica de cálculo
+    # 1. Preparación - Aumentamos a 30,000 para tener más datos
+    df = obtener_datos_historicos(config.SIMBOLO, config.TEMPORALIDAD, 30000)
+    df = al.calcular_indicadores(df) 
     
     saldo = config.SALDO_INICIAL_USD
     posicion = None
     precio_entrada = 0
     trades_totales = 0
     ganados = 0
+    capital_arriesgado = 0
 
     print(f"\nIniciando simulación con ${saldo} USD...")
+    print(f"Interés Compuesto: {'SÍ' if config.USAR_INTERES_COMPUESTO else 'NO'}")
     print("-" * 50)
 
-    # 2. Simulación fila por fila (como si pasara el tiempo)
-    for i in range(25, len(df)): # Empezamos en 25 para tener datos de SMA21
+    # 2. Simulación
+    for i in range(250, len(df)): 
         ventana = df.iloc[:i+1]
         fila_actual = df.iloc[i]
         precio = fila_actual['Cierre']
         
-        # Pedimos señal al cerebro que ya armamos
-        señal = al.obtener_señal(ventana, posicion)
-
         # Lógica de Apertura
         if posicion is None:
-            if señal == "COMPRA":
-                posicion = "LONG"
+            señal = al.obtener_señal(ventana, posicion)
+            if señal in ["COMPRA", "SHORT"]:
+                posicion = "LONG" if señal == "COMPRA" else "SHORT"
                 precio_entrada = precio
                 trades_totales += 1
-            elif señal == "SHORT":
-                posicion = "SHORT"
-                precio_entrada = precio
-                trades_totales += 1
+                
+                if config.USAR_INTERES_COMPUESTO:
+                    capital_arriesgado = saldo * (config.PORCENTAJE_POR_TRADE / 100)
+                else:
+                    capital_arriesgado = config.SALDO_INICIAL_USD
 
         # Lógica de Cierre
-        elif señal == "CERRAR":
-            if posicion == "LONG":
-                resultado = (precio - precio_entrada) * (saldo / precio_entrada)
-            else:
-                resultado = (precio_entrada - precio) * (saldo / precio_entrada)
-            
-            # Restamos comisión
-            comision = saldo * config.COMISION_EXCHANGE
-            neto = resultado - comision
-            saldo += neto
-            
-            if neto > 0: ganados += 1
-            
-            print(f"Trade {trades_totales}: {posicion} | Salida: ${precio:.2f} | Neto: ${neto:.2f} | Saldo: ${saldo:.2f}")
-            posicion = None
+        elif posicion is not None:
+            señal_cierre = al.obtener_señal(ventana, posicion) == "CERRAR"
+            break_even = al.gestionar_salida_dinamica(precio, precio_entrada, posicion)
+
+            if señal_cierre or break_even:
+                motivo = "INDICADOR" if señal_cierre else "BREAK_EVEN"
+                
+                if posicion == "LONG":
+                    resultado_pct = (precio - precio_entrada) / precio_entrada
+                else:
+                    resultado_pct = (precio_entrada - precio) / precio_entrada
+                
+                neto = (resultado_pct * capital_arriesgado) - (capital_arriesgado * config.COMISION_EXCHANGE)
+                saldo += neto
+                
+                if neto > 0: ganados += 1
+                
+                # REGISTRO EN CSV Y CONSOLA
+                registrar_operacion_csv(
+                    posicion, 
+                    precio, 
+                    round(fila_actual['RSI'], 2), 
+                    round(fila_actual['ADX'], 2), 
+                    round(neto, 2), 
+                    round(saldo, 2)
+                )
+                
+                print(f"Trade {trades_totales}: {posicion} | Motivo: {motivo} | Neto: ${neto:.2f} | Saldo: ${saldo:.2f}")
+                posicion = None
 
     # 3. Resultados Finales
     print("-" * 50)
